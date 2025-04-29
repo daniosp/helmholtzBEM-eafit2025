@@ -2,9 +2,9 @@
 Boundary element method
 =======================
 
-Routines for boundary element analysis for Laplace equation
+Routines for boundary element analysis for the Helmholtz Equation
 
-    u_xx + u_yy = 0
+        nabla^2 phi + kappa^2 phi = 0
 
 with mixed (Dirichlet, Neumann) boundary conditions.
 
@@ -12,10 +12,13 @@ Elements approximate the potential and flow as constants.
 
 """
 import numpy as np
-from numpy import log, sin, cos, arctan2, pi, mean
+from numpy import log, sin, cos, arctan2, pi, mean, dot
 from numpy.linalg import norm, solve
+from scipy.special import roots_legendre,hankel1
+from scipy.integrate import quad
 import matplotlib.pyplot as plt
 import meshio
+import sys
 
 
 #%% Pre-process
@@ -69,6 +72,7 @@ def read_geo_gmsh(fname, dir_groups, neu_groups):
 
 
 #%% Process
+# ESTE DEBE REVISARSE PARA HACERLO COMPLIANT CON HEMLHOLTZ
 def influence_coeff(elem, coords, pt_col):
     """Compute influence coefficients
 
@@ -107,8 +111,45 @@ def influence_coeff(elem, coords, pt_col):
     return -G_coeff/(2*pi), H_coeff/(2*pi)
 
 
-def assem(coords, elems):
-    """Assembly matrices for the BEM problem
+def Gij_coefficient_function(chi,coord0,coord1,k):
+
+    # Function to integrate (Helmholtz+Coord change)
+    dist_vec = coord1-coord0
+    ele_len = norm(dist_vec) # Element length
+
+    x_m, y_m = [mean([coord0[0],coord1[0]]), mean([coord0[1],coord1[1]])]
+
+    x_chi = (coord1[0]+coord0[0])/2 + (coord1[0]-coord0[0])/2*chi
+    y_chi = (coord1[1]+coord0[1])/2 + (coord1[1]-coord0[1])/2*chi
+    
+    r_chi = ((x_chi-x_m)**2+(y_chi-y_m)**2)**0.5
+
+    return 1j/4 * hankel1(0,k*r_chi) * ele_len/2
+
+    
+def Hij_coefficient_function(chi,coord0,coord1,k):
+
+    # Function to integrate (Helmholtz+Coord change)
+    dist_vec = coord1-coord0
+    ele_len = norm(dist_vec) # Element length
+
+    x_m, y_m = [mean([coord0[0],coord1[0]]), mean([coord0[1],coord1[1]])]
+
+    x_chi = (coord1[0]+coord0[0])/2 + (coord1[0]-coord0[0])/2*chi
+    y_chi = (coord1[1]+coord0[1])/2 + (coord1[1]-coord0[1])/2*chi
+
+    r_chi = ((x_chi-x_m)**2+(y_chi-y_m)**2)**0.5
+    r_chi_vec = [(x_chi-x_m)/r_chi ,  (y_chi-y_m)/r_chi]
+
+    dcos = dist_vec / norm(dist_vec)
+    rotmat = np.array([[dcos[1], -dcos[0]],
+                       [dcos[0], dcos[1]]])
+    normal = rotmat @ dcos
+
+    return -1j/4 * hankel1(1,k*r_chi) * dot(r_chi_vec, normal)* ele_len/2
+
+def assem(coords,elems,k,domain_type = "external"):
+    """Assembly matrices for the BEM Helmholtz problem
 
     Parameters
     ----------
@@ -116,28 +157,43 @@ def assem(coords, elems):
         Coordinates for the nodes.
     elems : ndarray, int
         Connectivity for the elements.
+    k : float
+        Wavenumber
+    domain_type: string, "internal" or "external"
+        Sets the type of domain problem for Helmholtz (Changes the sign of Hmat when i == j)
 
     Returns
     -------
     Gmat : ndarray, float
         Influence matrix for the flow.
-    Hmat : ndarray, float
+    Fmat : ndarray, float
         Influence matrix for primary variable.
     """
+
+    if domain_type != "external" and domain_type != "internal":
+        sys.exit("Invalid domain_type, please enter a valid type and re-run the code.")
+
     nelems = elems.shape[0]
     Gmat = np.zeros((nelems, nelems))
     Hmat = np.zeros((nelems, nelems))
     for ev_cont, elem1 in enumerate(elems):
         for col_cont, elem2 in enumerate(elems):
-            pt_col = mean(coords[elem2], axis=0)
             if ev_cont == col_cont:
-                L = norm(coords[elem1[1]] - coords[elem1[0]])
-                Gmat[ev_cont, ev_cont] = - L/(2*pi)*(log(L/2) - 1)
-                Hmat[ev_cont, ev_cont] = - 0.5
+                
+                gquad,_ = quad(Gij_coefficient_function,0+1e-10,1+1e-10,args=(coords[elem1],coords[elem2],k))
+                Gmat[ev_cont, ev_cont] = 2 * gquad
+                
+                if domain_type == "external":
+                    Hmat[ev_cont, ev_cont] = -0.5
+                elif domain_type == "internal":
+                    Hmat[ev_cont, ev_cont] = 0.5
+                else:
+                    sys.exit("Invalid domain_type, please enter a valid type and re-run the code.")
             else:
-                Gij, Hij = influence_coeff(elem1, coords, pt_col)
-                Gmat[ev_cont, col_cont] = Gij
-                Hmat[ev_cont, col_cont] = Hij
+                gquad,_ = quad(Gij_coefficient_function,-1+1e-10,1+1e-10,args=(coords[elem1],coords[elem2],k))
+                hquad, _ = quad(Hij_coefficient_function,-1+1e-10,1+1e-10,args=(coords[elem1],coords[elem2],k))
+                Gmat[ev_cont, col_cont] =  gquad
+                Hmat[ev_cont, col_cont] =  hquad
     return Gmat, Hmat
 
 
