@@ -111,32 +111,43 @@ def influence_coeff(elem, coords, pt_col):
     return -G_coeff/(2*pi), H_coeff/(2*pi)
 
 
-def Gij_coefficient_function(chi,coord0,coord1,k):
+def Gij_coefficient_function(chi,coords_i,coords_j,k,complex_part="Re"):
+
+    # i element is in which the constant point is considered
+    # j element is the one over which the intrgration is carried out
 
     # Function to integrate (Helmholtz+Coord change)
-    dist_vec = coord1-coord0
+    dist_vec = coords_j[1]-coords_j[0]
     ele_len = norm(dist_vec) # Element length
 
-    x_m, y_m = [mean([coord0[0],coord1[0]]), mean([coord0[1],coord1[1]])]
+    x_m, y_m = [mean([coords_i[0][0],coords_i[1][0]]), mean([coords_i[0][1],coords_i[1][1]])]
 
-    x_chi = (coord1[0]+coord0[0])/2 + (coord1[0]-coord0[0])/2*chi
-    y_chi = (coord1[1]+coord0[1])/2 + (coord1[1]-coord0[1])/2*chi
+    x_chi = (coords_j[1][0]+coords_j[0][0])/2 + (coords_j[1][0]-coords_j[0][0])/2*chi
+    y_chi = (coords_j[1][1]+coords_j[0][1])/2 + (coords_j[1][1]-coords_j[0][1])/2*chi
     
     r_chi = ((x_chi-x_m)**2+(y_chi-y_m)**2)**0.5
 
-    return 1j/4 * hankel1(0,k*r_chi) * ele_len/2
+    if complex_part == "Re" or complex_part =="re":
+        return (1j/4 * hankel1(0,k*r_chi) * ele_len/2).real
+    elif complex_part == "Im" or complex_part == "im":
+        return (1j/4 * hankel1(0,k*r_chi) * ele_len/2).imag
+    else:
+        raise Exception("Wrong input specification.")
 
     
-def Hij_coefficient_function(chi,coord0,coord1,k):
+
+    
+def Hij_coefficient_function(chi,coords_i,coords_j,k,complex_part="Re"):
 
     # Function to integrate (Helmholtz+Coord change)
-    dist_vec = coord1-coord0
+    dist_vec = coords_j[1]-coords_j[0]
     ele_len = norm(dist_vec) # Element length
 
-    x_m, y_m = [mean([coord0[0],coord1[0]]), mean([coord0[1],coord1[1]])]
+    x_m, y_m = [mean([coords_i[0][0],coords_i[1][0]]), mean([coords_i[0][1],coords_i[1][1]])]
 
-    x_chi = (coord1[0]+coord0[0])/2 + (coord1[0]-coord0[0])/2*chi
-    y_chi = (coord1[1]+coord0[1])/2 + (coord1[1]-coord0[1])/2*chi
+    x_chi = (coords_j[1][0]+coords_j[0][0])/2 + (coords_j[1][0]-coords_j[0][0])/2*chi
+    y_chi = (coords_j[1][1]+coords_j[0][1])/2 + (coords_j[1][1]-coords_j[0][1])/2*chi
+    
 
     r_chi = ((x_chi-x_m)**2+(y_chi-y_m)**2)**0.5
     r_chi_vec = [(x_chi-x_m)/r_chi ,  (y_chi-y_m)/r_chi]
@@ -146,9 +157,14 @@ def Hij_coefficient_function(chi,coord0,coord1,k):
                        [dcos[0], dcos[1]]])
     normal = rotmat @ dcos
 
-    return -1j/4 * hankel1(1,k*r_chi) * dot(r_chi_vec, normal)* ele_len/2
+    if complex_part == "Re" or complex_part =="re":
+        return (-1j/4 * hankel1(1,k*r_chi) * dot(r_chi_vec, normal)* ele_len/2).real
+    elif complex_part == "Im" or complex_part == "im":
+        return (-1j/4 * hankel1(1,k*r_chi) * dot(r_chi_vec, normal)* ele_len/2).imag
+    else:
+        raise Exception("Wrong input specification.")
 
-def assem(coords,elems,k,domain_type = "external"):
+def assem(coords,elems,k,domain_type):
     """Assembly matrices for the BEM Helmholtz problem
 
     Parameters
@@ -170,35 +186,21 @@ def assem(coords,elems,k,domain_type = "external"):
         Influence matrix for primary variable.
     """
 
-    
-    def Gij_coefficient_function(chi,coord0,coord1,k):
-    
-        # Function to integrate (Helmholtz+Coord change)
-        dist_vec = coord1-coord0
-        ele_len = norm(dist_vec) # Element length
-    
-        x_m, y_m = [mean([coord0[0],coord1[0]]), mean([coord0[1],coord1[1]])]
-    
-        x_chi = (coord1[0]+coord0[0])/2 + (coord1[0]-coord0[0])/2*chi
-        y_chi = (coord1[1]+coord0[1])/2 + (coord1[1]-coord0[1])/2*chi
-        
-        r_chi = ((x_chi-x_m)**2+(y_chi-y_m)**2)**0.5
-    
-        return 1j/4 * hankel1(0,k*r_chi) * ele_len/2
-
-
     if domain_type != "external" and domain_type != "internal":
         sys.exit("Invalid domain_type, please enter a valid type and re-run the code.")
 
     nelems = elems.shape[0]
-    Gmat = np.zeros((nelems, nelems))
-    Hmat = np.zeros((nelems, nelems))
+    Gmat = np.zeros((nelems, nelems),dtype=complex)
+    Hmat = np.zeros((nelems, nelems),dtype=complex)
     for ev_cont, elem1 in enumerate(elems):
         for col_cont, elem2 in enumerate(elems):
             if ev_cont == col_cont:
-                
-                gquad,_ = quad(Gij_coefficient_function,0+1e-10,1+1e-10,args=(coords[elem1],coords[elem2],k))
-                Gmat[ev_cont, ev_cont] = 2 * gquad
+
+                wrapped_GijRe = lambda chi: Gij_coefficient_function(chi,coords[elem1],coords[elem2],k,"re")
+                wrapped_GijIm = lambda chi: Gij_coefficient_function(chi,coords[elem1],coords[elem2],k,"im")
+                gquadRe,_ = quad(wrapped_GijRe,0,1)
+                gquadIm,_ = quad(wrapped_GijIm,0,1)
+                Gmat[ev_cont, ev_cont] = 2 * (gquadRe+1j*gquadIm)
                 
                 if domain_type == "external":
                     Hmat[ev_cont, ev_cont] = -0.5
@@ -207,10 +209,19 @@ def assem(coords,elems,k,domain_type = "external"):
                 else:
                     sys.exit("Invalid domain_type, please enter a valid type and re-run the code.")
             else:
-                gquad,_ = quad(Gij_coefficient_function,-1+1e-10,1+1e-10,args=(coords[elem1],coords[elem2],k))
-                hquad, _ = quad(Hij_coefficient_function,-1+1e-10,1+1e-10,args=(coords[elem1],coords[elem2],k))
-                Gmat[ev_cont, col_cont] =  gquad
-                Hmat[ev_cont, col_cont] =  hquad
+
+                wrapped_GijRe = lambda chi: Gij_coefficient_function(chi,coords[elem1],coords[elem2],k,"re")
+                wrapped_GijIm = lambda chi: Gij_coefficient_function(chi,coords[elem1],coords[elem2],k,"im")
+                gquadRe,_ = quad(wrapped_GijRe,-1,1)
+                gquadIm,_ = quad(wrapped_GijIm,-1,1)
+                Gmat[ev_cont, ev_cont] = gquadRe+1j*gquadIm
+
+                wrapped_HijRe = lambda chi: Hij_coefficient_function(chi,coords[elem1],coords[elem2],k,"re")
+                wrapped_HijIm = lambda chi: Hij_coefficient_function(chi,coords[elem1],coords[elem2],k,"im")
+                hquadRe,_ = quad(wrapped_HijRe,-1,1)
+                hquadIm,_ = quad(wrapped_HijIm,-1,1)
+                Hmat[ev_cont, ev_cont] = hquadRe+1j*hquadIm
+
     return Gmat, Hmat
 
 
