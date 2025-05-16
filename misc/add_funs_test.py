@@ -14,7 +14,7 @@ Elements approximate the potential and flow as constants.
 import numpy as np
 from numpy import log, sin, cos, arctan2, pi, mean, dot
 from numpy.linalg import norm, solve
-from scipy.special import roots_legendre,hankel1
+from scipy.special import roots_legendre, hankel1
 from scipy.integrate import quad
 import matplotlib.pyplot as plt
 import meshio
