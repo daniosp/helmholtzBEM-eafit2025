@@ -182,7 +182,7 @@ def assem(coords,elems,k,domain_type):
     -------
     Gmat : ndarray, float
         Influence matrix for the flow.
-    Fmat : ndarray, float
+    Hmat : ndarray, float
         Influence matrix for primary variable.
     """
 
