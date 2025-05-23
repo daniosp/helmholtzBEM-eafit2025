@@ -37,15 +37,16 @@ def assem_duque(coords, elems, k):
 
             if ev_cont == col_cont: # i == j
 
-               pass
+               Gij = G_ij_singular(elem1, coords, pt_col, k)
+               Hij = 0
 
             else: # i != j
 
                 Gij = G_ij_nonsingular(elem1, coords, pt_col, k)
                 Hij = H_ij_nonsingular(elem1, coords, pt_col, k)
             
-                Gmat[ev_cont, col_cont] = Gij
-                Hmat[ev_cont, col_cont] = Hij
+            Gmat[ev_cont, col_cont] = Gij
+            Hmat[ev_cont, col_cont] = Hij
 
     return Gmat, Hmat
 
@@ -173,7 +174,7 @@ def H_ij_nonsingular(elem_j, coords, p_i, k, n_gauss = 8):
 def G_ij_singular(elem_j, coords, p_i, k, n_gauss = 8):
     """
     This function was generated with ChatGPT based on the nonsingular case function.
-    
+
     Regularized computation of the singular G_ii value using singularity subtraction.
 
     Parameters
