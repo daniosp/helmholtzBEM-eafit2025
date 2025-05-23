@@ -330,20 +330,18 @@ def H_ij_nonsingular(elem_j, coords, p_i, k, n_gauss = 8):
 
     E_j_vect = EP_j_1 - EP_j # The j-th element as a vector.
     E_j_vect_unitary = E_j_vect / norm(E_j_vect) # Unit vector of the j-th element.
-    normal = np.array([-E_j_vect_unitary[1], E_j_vect_unitary[0]]) # Normal vector of the j-th element. 
+    normal_unitary = np.array([-E_j_vect_unitary[1], E_j_vect_unitary[0]]) # Normal vector of the j-th element. 
 
-    dot_product = r_x_xi * normal [0] + r_y_xi * normal[1]
+    dot_product = r_x_xi * normal_unitary [0] + r_y_xi * normal_unitary[1]
     cos_phi_symbolic = dot_product / r_magnitude_symbolic
-
     integrand_symbolic = hankel1(1, k * r_magnitude_symbolic) * cos_phi_symbolic
     integrand_callable = sp.lambdify(xi, integrand_symbolic, modules='numpy')
-
 
     ## Gauss Integration
     xi_vals, w_vals = leggauss(n_gauss)
     integrand_vals = integrand_callable(xi_vals)
     integral = np.dot(w_vals, integrand_vals)
-    result = ( (1j * k * L_j) / (8) ) * integral
+    result = -( (1j * k * L_j) / (8) ) * integral
     
     return result
 
