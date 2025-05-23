@@ -80,6 +80,7 @@ def G_ij_nonsingular(elem_j, coords, p_i, k, n_gauss = 8):
 
     return result
 
+'''
 def H_ij_nonsingular(elem_j, coords, p_i, k, n_gauss = 8):
     
     ## Parameterization
@@ -105,6 +106,7 @@ def H_ij_nonsingular(elem_j, coords, p_i, k, n_gauss = 8):
 
     dot_product = r_x_xi * normal_unitary [0] + r_y_xi * normal_unitary[1]
     cos_phi_symbolic = dot_product / r_magnitude_symbolic
+
     integrand_symbolic = hankel1(1, k * r_magnitude_symbolic) * cos_phi_symbolic
     integrand_callable = sp.lambdify(xi, integrand_symbolic, modules='numpy')
 
@@ -115,8 +117,119 @@ def H_ij_nonsingular(elem_j, coords, p_i, k, n_gauss = 8):
     result = -( (1j * k * L_j) / (8) ) * integral
     
     return result
+'''
+
+def H_ij_nonsingular(elem_j, coords, p_i, k, n_gauss = 8):
+    
+    ## Parameterization
+    xi = sp.symbols('xi')
+
+    EP_j = coords[elem_j[0]]    # End Point j
+    EP_j_1 = coords[elem_j[1]]  # End Point j+1
+    L_j = norm(EP_j_1 - EP_j)   # Length of the j-th element
+
+    # Parametrize q(xi) on the element
+    x_xi = (EP_j[0] * (1 - xi) + EP_j_1[0] * (1 + xi)) / 2
+    y_xi = (EP_j[1] * (1 - xi) + EP_j_1[1] * (1 + xi)) / 2
+
+    # Collocation point
+    X_i = p_i[0]
+    Y_i = p_i[1]
+
+    # Vector from x_i to q(xi)
+    r_x_xi = x_xi - X_i
+    r_y_xi = y_xi - Y_i
+    r_magnitude_symbolic = sp.sqrt(r_x_xi**2 + r_y_xi**2)
+
+    # Normal vector to the element (unit)
+    E_j_vect = EP_j_1 - EP_j
+    E_j_vect_unitary = E_j_vect / norm(E_j_vect)
+    normal_unitary = np.array([-E_j_vect_unitary[1], E_j_vect_unitary[0]])
+
+    # Cos(phi) = dot(r, n̂) / ||r||
+    dot_product = r_x_xi * normal_unitary[0] + r_y_xi * normal_unitary[1]
+    cos_phi_symbolic = dot_product / r_magnitude_symbolic
+
+    # Lambdify components separately
+    r_mag_func = sp.lambdify(xi, r_magnitude_symbolic, modules='numpy')
+    cos_phi_func = sp.lambdify(xi, cos_phi_symbolic, modules='numpy')
+
+    # Define numerical integrand
+    def integrand_callable(xi_vals):
+        r_vals = r_mag_func(xi_vals)
+        cos_vals = cos_phi_func(xi_vals)
+        return hankel1(1, k * r_vals) * cos_vals
+
+    ## Gauss Integration
+    xi_vals, w_vals = leggauss(n_gauss)
+    integrand_vals = integrand_callable(xi_vals)
+    integral = np.dot(w_vals, integrand_vals)
+
+    result = - (1j * k * L_j / 8) * integral
+    return result
 
 
 
+def G_ij_singular(elem_j, coords, p_i, k, n_gauss = 8):
+    """
+    This function was generated with ChatGPT based on the nonsingular case function.
+    
+    Regularized computation of the singular G_ii value using singularity subtraction.
+
+    Parameters
+    ----------
+    elem_j : list[int]
+        Indices of the two endpoints of the element (i = j).
+    coords : np.ndarray
+        Array of node coordinates.
+    p_i : np.ndarray
+        Collocation point (x_i, y_i) lying on the element.
+    k : float
+        Helmholtz wavenumber.
+    n_gauss : int
+        Number of Gauss points.
+
+    Returns
+    -------
+    result : complex
+        Regularized G_ii value.
+    """
+    ## Parameterization
+    xi = sp.symbols('xi')
+
+    EP_j = coords[elem_j[0]]     # End Point j
+    EP_j_1 = coords[elem_j[1]]   # End Point j+1
+    L_j = norm(EP_j_1 - EP_j)    # Element length
+
+    x_xi = (EP_j[0] * (1 - xi) + EP_j_1[0] * (1 + xi)) / 2
+    y_xi = (EP_j[1] * (1 - xi) + EP_j_1[1] * (1 + xi)) / 2
+
+    X_i = p_i[0]  # Collocation point x
+    Y_i = p_i[1]  # Collocation point y
+
+    r_x_xi = x_xi - X_i
+    r_y_xi = y_xi - Y_i
+    r_magnitude_symbolic = sp.sqrt(r_x_xi**2 + r_y_xi**2)
+    log_r_symbolic = sp.log(r_magnitude_symbolic)
+
+    # Lambdify for numerical evaluation
+    r_magnitude_callable = sp.lambdify(xi, r_magnitude_symbolic, modules='numpy')
+    log_r_callable = sp.lambdify(xi, log_r_symbolic, modules='numpy')
+
+    ## Gauss Integration
+    xi_vals, w_vals = leggauss(n_gauss)
+    r_vals = r_magnitude_callable(xi_vals)
+    log_vals = log_r_callable(xi_vals)
+
+    # Regularized integrand
+    reg_integrand = hankel1(0, k * r_vals) - (2j / np.pi) * log_vals
+    reg_integral = np.dot(w_vals, reg_integrand)
+
+    # Analytic integral of log term over [-1, 1]
+    analytic_integral = 2 * np.log(L_j / 2)
+
+    # Combine both parts
+    result = (1j * L_j / 8) * (reg_integral + (2j / np.pi) * analytic_integral)
+    return result
 
 ###################################################################################
