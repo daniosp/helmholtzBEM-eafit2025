@@ -79,11 +79,11 @@ def influence_coeff(elem, coords, pt_col):
     Parameters
     ----------
     elems : ndarray, int
-        Connectivity for the elements.
+        Connectivity for the elements. [1x2]
     coords : ndarray, float
-        Coordinates for the nodes.
+        Coordinates for the nodes. [n_nodes x 2]
     pt_col : ndarray
-        Coordinates of the colocation point.
+        Coordinates of the colocation point. [1x2]
 
     Returns
     -------
@@ -111,7 +111,7 @@ def influence_coeff(elem, coords, pt_col):
     return -G_coeff/(2*pi), H_coeff/(2*pi)
 
 
-def Gij_coefficient_function(chi,coords_i,coords_j,k,complex_part="Re"):
+def Gij_coefficient_function(chi, coords_i, coords_j, k, complex_part="Re"):
 
     # i element is in which the constant point is considered
     # j element is the one over which the intrgration is carried out
@@ -137,7 +137,7 @@ def Gij_coefficient_function(chi,coords_i,coords_j,k,complex_part="Re"):
     
 
     
-def Hij_coefficient_function(chi,coords_i,coords_j,k,complex_part="Re"):
+def Hij_coefficient_function(chi,  coords_i, coords_j, k, complex_part = "Re"):
 
     # Function to integrate (Helmholtz+Coord change)
     dist_vec = coords_j[1]-coords_j[0]
@@ -163,6 +163,8 @@ def Hij_coefficient_function(chi,coords_i,coords_j,k,complex_part="Re"):
         return (-1j/4 * hankel1(1,k*r_chi) * dot(r_chi_vec, normal)* ele_len/2).imag
     else:
         raise Exception("Wrong input specification.")
+
+
 
 def assem(coords,elems,k,domain_type):
     """Assembly matrices for the BEM Helmholtz problem
@@ -223,8 +225,132 @@ def assem(coords,elems,k,domain_type):
                 Hmat[ev_cont, ev_cont] = hquadRe+1j*hquadIm
 
     return Gmat, Hmat
+###################################################################################
+def assem_duque(coords, elems, k):
+    """Assembly matrices for the BEM problem
+
+    Parameters
+    ----------
+    coords : ndarray, float
+        Coordinates for the nodes.
+    elems : ndarray, int
+        Connectivity for the elements.
+
+    Returns
+    -------
+    Gmat : ndarray, float
+        Influence matrix for the flow.
+    Hmat : ndarray, float
+        Influence matrix for primary variable.
+    """
+    nelems = elems.shape[0]
+
+    Gmat = np.zeros((nelems, nelems))
+    Hmat = np.zeros((nelems, nelems))
+
+    for ev_cont, elem1 in enumerate(elems):
+    # j-element varia dentro de este loop
+
+        for col_cont, elem2 in enumerate(elems):
+        # p_i varia dentro de este loop
+
+            pt_col = mean(coords[elem2], axis=0)
+
+            if ev_cont == col_cont: # i == j
+
+                L = norm(coords[elem1[1]] - coords[elem1[0]])
+                Gmat[ev_cont, ev_cont] = - L/(2*pi)*(log(L/2) - 1)
+                Hmat[ev_cont, ev_cont] = - 0.5
+
+            else: # i != j
+
+                Gij = G_ij_nonsingular(elem1, coords, pt_col, k)
+                Hij = H_ij_nonsingular(elem1, coords, pt_col, k)
+            
+                Gmat[ev_cont, col_cont] = Gij
+                Hmat[ev_cont, col_cont] = Hij
+
+    return Gmat, Hmat
+
+import sympy as sp
+import numpy as np
+from scipy.special import hankel1
+from numpy.linalg import norm
+from numpy.polynomial.legendre import leggauss
+
+def G_ij_nonsingular(elem_j, coords, p_i, k, n_gauss = 8):
+    
+    ## Parameterization
+    xi = sp.symbols('xi')
+
+    EP_j = coords[elem_j[0]] # End Point j
+    EP_j_1 = coords[elem_j[1]] # End Point j+1
+    L_j = norm(EP_j_1 - EP_j) # Length of the j-th element
+    
+    x_xi = (EP_j[0] * (1 - xi) + EP_j_1[0] * (1 + xi)) / 2
+    y_xi = (EP_j[1] * (1 - xi) + EP_j_1[1] * (1 + xi)) / 2
+
+    X_i = p_i[0] #X_i
+    Y_i = p_i[1] #Y_i
+
+    r_x_xi = x_xi - X_i
+    r_y_xi = y_xi - Y_i
+    r_magnitude_symbolic = sp.sqrt(r_x_xi**2 + r_y_xi**2)
+
+    r_magnitude_callable = sp.lambdify(xi, r_magnitude_symbolic, modules='numpy')
+
+    ## Gauss Integration
+    xi_vals, w_vals = leggauss(n_gauss)
+    r_magnitudes = r_magnitude_callable(xi_vals)
+
+    integrand = hankel1(0, k * r_magnitudes)
+    integral = np.dot(w_vals, integrand)
+    result = ( (1j * L_j) / (8) ) * integral
+
+    return result
+
+def H_ij_nonsingular(elem_j, coords, p_i, k, n_gauss = 8):
+    
+    ## Parameterization
+    xi = sp.symbols('xi')
+
+    EP_j = coords[elem_j[0]] # End Point j
+    EP_j_1 = coords[elem_j[1]] # End Point j+1
+    L_j = norm(EP_j_1 - EP_j) # Length of the j-th element.
+    
+    x_xi = (EP_j[0] * (1 - xi) + EP_j_1[0] * (1 + xi)) / 2
+    y_xi = (EP_j[1] * (1 - xi) + EP_j_1[1] * (1 + xi)) / 2
+
+    X_i = p_i[0] #X_i
+    Y_i = p_i[1] #Y_i
+
+    r_x_xi = x_xi - X_i
+    r_y_xi = y_xi - Y_i
+    r_magnitude_symbolic = sp.sqrt(r_x_xi**2 + r_y_xi**2)
+
+    E_j_vect = EP_j_1 - EP_j # The j-th element as a vector.
+    E_j_vect_unitary = E_j_vect / norm(E_j_vect) # Unit vector of the j-th element.
+    normal = np.array([-E_j_vect_unitary[1], E_j_vect_unitary[0]]) # Normal vector of the j-th element. 
+
+    dot_product = r_x_xi * normal [0] + r_y_xi * normal[1]
+    cos_phi_symbolic = dot_product / r_magnitude_symbolic
+
+    integrand_symbolic = hankel1(1, k * r_magnitude_symbolic) * cos_phi_symbolic
+    integrand_callable = sp.lambdify(xi, integrand_symbolic, modules='numpy')
 
 
+    ## Gauss Integration
+    xi_vals, w_vals = leggauss(n_gauss)
+    integrand_vals = integrand_callable(xi_vals)
+    integral = np.dot(w_vals, integrand_vals)
+    result = ( (1j * k * L_j) / (8) ) * integral
+    
+    return result
+
+
+
+
+###################################################################################
 def rearrange_mats(Hmat, Gmat, id_dir, id_neu):
     """Rearrange BEM matrices to account for boundary conditions
 

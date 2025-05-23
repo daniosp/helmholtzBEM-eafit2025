@@ -33,6 +33,6 @@ Physical Surface(2) = {1};
 
  
 // Mesh parameters 
-ndiv = 28; 
+ndiv = 30; 
 Transfinite Curve { 1,2,3, 4 } = ndiv Using Progression 1; 
 Transfinite Surface {1}; 
