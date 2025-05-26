@@ -71,96 +71,58 @@ def read_geo_gmsh(fname, dir_groups, neu_groups):
     return mesh, coords, elems, x_m, y_m, id_dir, id_neu
 
 
-#%% Process
-# ESTE DEBE REVISARSE PARA HACERLO COMPLIANT CON HEMLHOLTZ
-def influence_coeff(elem, coords, pt_col):
-    """Compute influence coefficients
-
-    Parameters
-    ----------
-    elems : ndarray, int
-        Connectivity for the elements. [1x2]
-    coords : ndarray, float
-        Coordinates for the nodes. [n_nodes x 2]
-    pt_col : ndarray
-        Coordinates of the colocation point. [1x2]
-
-    Returns
-    -------
-    G_coeff : float
-        Influence coefficient for flows.
-    H_coeff : float
-        Influence coefficient for primary variable.
-    """
-    dcos = coords[elem[1]] - coords[elem[0]]
-    dcos = dcos / norm(dcos)
-    rotmat = np.array([[dcos[1], -dcos[0]],
-                       [dcos[0], dcos[1]]])
-    r_A = rotmat.dot(coords[elem[0]] - pt_col)
-    r_B = rotmat.dot(coords[elem[1]] - pt_col)
-    theta_A = arctan2(r_A[1], r_A[0])
-    theta_B = arctan2(r_B[1], r_B[0])
-    if norm(r_A) <= 1e-6:
-        G_coeff = r_B[1]*(log(norm(r_B)) - 1) + theta_B*r_B[0]
-    elif norm(r_B) <= 1e-6:
-        G_coeff = -(r_A[1]*(log(norm(r_A)) - 1) + theta_A*r_A[0])
-    else:
-        G_coeff = r_B[1]*(log(norm(r_B)) - 1) + theta_B*r_B[0] -\
-                  (r_A[1]*(log(norm(r_A)) - 1) + theta_A*r_A[0])
-    H_coeff = theta_B - theta_A
-    return -G_coeff/(2*pi), H_coeff/(2*pi)
-
-
-def Gij_coefficient_function(chi, coords_i, coords_j, k, complex_part="Re"):
+def Gij_coefficient_function(chi, elem_j, coords, pt_i, k, complex_part="Re"):
 
     # i element is in which the constant point is considered
     # j element is the one over which the intrgration is carried out
 
-    # Function to integrate (Helmholtz+Coord change)
-    dist_vec = coords_j[1]-coords_j[0]
-    ele_len = norm(dist_vec) # Element length
-
-    x_m, y_m = [mean([coords_i[0][0],coords_i[1][0]]), mean([coords_i[0][1],coords_i[1][1]])]
-
-    x_chi = (coords_j[1][0]+coords_j[0][0])/2 + (coords_j[1][0]-coords_j[0][0])/2*chi
-    y_chi = (coords_j[1][1]+coords_j[0][1])/2 + (coords_j[1][1]-coords_j[0][1])/2*chi
+    EP_j = coords[elem_j[0]] # End Point j
+    EP_j_1 = coords[elem_j[1]] # End Point j+1
+    L_j = norm(EP_j_1 - EP_j) # Length of the j-th element
     
-    r_chi = ((x_chi-x_m)**2+(y_chi-y_m)**2)**0.5
+    x_i, y_i = pt_i
+
+    x_chi = (EP_j[0] * (1 - chi) + EP_j_1[0] * (1 + chi)) / 2
+    y_chi = (EP_j[1] * (1 - chi) + EP_j_1[1] * (1 + chi)) / 2
+    
+    r_chi = ((x_chi-x_i)**2+(y_chi-y_i)**2)**0.5
 
     if complex_part == "Re" or complex_part =="re":
-        return (1j/4 * hankel1(0,k*r_chi) * ele_len/2).real
+        return (1j/8 * hankel1(0,k*r_chi) * L_j).real
     elif complex_part == "Im" or complex_part == "im":
-        return (1j/4 * hankel1(0,k*r_chi) * ele_len/2).imag
+        return (1j/8 * hankel1(0,k*r_chi) * L_j).imag
     else:
         raise Exception("Wrong input specification.")
 
     
+def Hij_coefficient_function(chi, elem_j, coords, pt_i, k, complex_part="Re"):
 
+    EP_j = coords[elem_j[0]] # End Point j
+    EP_j_1 = coords[elem_j[1]] # End Point j+1
     
-def Hij_coefficient_function(chi,  coords_i, coords_j, k, complex_part = "Re"):
+    j_dist = EP_j_1 - EP_j
+    L_j = norm(EP_j_1 - EP_j) # Length of the j-th element
+    j_dir = j_dist/L_j
 
-    # Function to integrate (Helmholtz+Coord change)
-    dist_vec = coords_j[1]-coords_j[0]
-    ele_len = norm(dist_vec) # Element length
+    x_i, y_i = pt_i
 
-    x_m, y_m = [mean([coords_i[0][0],coords_i[1][0]]), mean([coords_i[0][1],coords_i[1][1]])]
-
-    x_chi = (coords_j[1][0]+coords_j[0][0])/2 + (coords_j[1][0]-coords_j[0][0])/2*chi
-    y_chi = (coords_j[1][1]+coords_j[0][1])/2 + (coords_j[1][1]-coords_j[0][1])/2*chi
+    x_chi = (EP_j[0] * (1 - chi) + EP_j_1[0] * (1 + chi)) / 2
+    y_chi = (EP_j[1] * (1 - chi) + EP_j_1[1] * (1 + chi)) / 2
     
+    r_chi = ((x_chi-x_i)**2+(y_chi-y_i)**2)**0.5
+    r_chi_vec = [(x_chi-x_i)/r_chi ,  (y_chi-y_i)/r_chi]
 
-    r_chi = ((x_chi-x_m)**2+(y_chi-y_m)**2)**0.5
-    r_chi_vec = [(x_chi-x_m)/r_chi ,  (y_chi-y_m)/r_chi]
-
-    dcos = dist_vec / norm(dist_vec)
-    rotmat = np.array([[dcos[1], -dcos[0]],
-                       [dcos[0], dcos[1]]])
-    normal = rotmat @ dcos
+    # Find the normal dir vector
+    rotmat = np.array([[j_dir[1], -j_dir[0]],
+                       [j_dir[0], j_dir[1]]])
+    normal = rotmat @ j_dir
+    
+    normal = normal/norm(normal)
 
     if complex_part == "Re" or complex_part =="re":
-        return (-1j/4 * hankel1(1,k*r_chi) * dot(r_chi_vec, normal)* ele_len/2).real
+        return (-1j/8 * k * L_j * hankel1(1,k*r_chi) * dot(r_chi_vec, normal) ).real
     elif complex_part == "Im" or complex_part == "im":
-        return (-1j/4 * hankel1(1,k*r_chi) * dot(r_chi_vec, normal)* ele_len/2).imag
+        return (-1j/8 * k * L_j * hankel1(1,k*r_chi) * dot(r_chi_vec, normal) ).imag
     else:
         raise Exception("Wrong input specification.")
 
@@ -194,35 +156,39 @@ def assem(coords,elems,k,domain_type):
     nelems = elems.shape[0]
     Gmat = np.zeros((nelems, nelems),dtype=complex)
     Hmat = np.zeros((nelems, nelems),dtype=complex)
+    
     for ev_cont, elem1 in enumerate(elems):
         for col_cont, elem2 in enumerate(elems):
+
+            pt_col = np.mean(coords[elem2], axis=0)
+            
             if ev_cont == col_cont:
 
-                wrapped_GijRe = lambda chi: Gij_coefficient_function(chi,coords[elem1],coords[elem2],k,"re")
-                wrapped_GijIm = lambda chi: Gij_coefficient_function(chi,coords[elem1],coords[elem2],k,"im")
+                wrapped_GijRe = lambda chi: Gij_coefficient_function(chi, elem1, coords, pt_col, k,"re")
+                wrapped_GijIm = lambda chi: Gij_coefficient_function(chi, elem1, coords, pt_col, k,"im")
                 gquadRe,_ = quad(wrapped_GijRe,0,1)
                 gquadIm,_ = quad(wrapped_GijIm,0,1)
                 Gmat[ev_cont, ev_cont] = 2 * (gquadRe+1j*gquadIm)
                 
                 if domain_type == "external":
-                    Hmat[ev_cont, ev_cont] = -0.5
+                    Hmat[ev_cont, col_cont] = -0.5
                 elif domain_type == "internal":
-                    Hmat[ev_cont, ev_cont] = 0.5
+                    Hmat[ev_cont, col_cont] = 0.5
                 else:
                     sys.exit("Invalid domain_type, please enter a valid type and re-run the code.")
             else:
 
-                wrapped_GijRe = lambda chi: Gij_coefficient_function(chi,coords[elem1],coords[elem2],k,"re")
-                wrapped_GijIm = lambda chi: Gij_coefficient_function(chi,coords[elem1],coords[elem2],k,"im")
+                wrapped_GijRe = lambda chi: Gij_coefficient_function(chi, elem1, coords, pt_col, k,"re")
+                wrapped_GijIm = lambda chi: Gij_coefficient_function(chi, elem1, coords, pt_col, k,"im")
                 gquadRe,_ = quad(wrapped_GijRe,-1,1)
                 gquadIm,_ = quad(wrapped_GijIm,-1,1)
-                Gmat[ev_cont, ev_cont] = gquadRe+1j*gquadIm
+                Gmat[ev_cont, col_cont] = gquadRe+1j*gquadIm
 
-                wrapped_HijRe = lambda chi: Hij_coefficient_function(chi,coords[elem1],coords[elem2],k,"re")
-                wrapped_HijIm = lambda chi: Hij_coefficient_function(chi,coords[elem1],coords[elem2],k,"im")
+                wrapped_HijRe = lambda chi: Hij_coefficient_function(chi, elem1, coords, pt_col, k,"re")
+                wrapped_HijIm = lambda chi: Hij_coefficient_function(chi, elem1, coords, pt_col, k,"im")
                 hquadRe,_ = quad(wrapped_HijRe,-1,1)
                 hquadIm,_ = quad(wrapped_HijIm,-1,1)
-                Hmat[ev_cont, ev_cont] = hquadRe+1j*hquadIm
+                Hmat[ev_cont, col_cont] = hquadRe+1j*hquadIm
 
     return Gmat, Hmat
 ###################################################################################
@@ -423,7 +389,7 @@ def create_rhs(x_m, y_m, u_bc, q_bc, id_dir, id_neu):
 
 
 #%% Post-process
-def eval_sol(ev_coords, coords, elems, u_boundary, q_boundary):
+def eval_sol(ev_coords, coords, elems, u_boundary, q_boundary, k, domain_type):
     """Evaluate the solution in a set of points
 
     Parameters
@@ -444,13 +410,35 @@ def eval_sol(ev_coords, coords, elems, u_boundary, q_boundary):
     solution : ndarray, float
         Solution evaluated in the given points.
     """
+
+    if domain_type != "external" and domain_type != "internal":
+        sys.exit("Invalid domain_type, please enter a valid type and re-run the code.")
+        
     npts = ev_coords.shape[0]
-    solution = np.zeros(npts)
-    for k in range(npts):
+    solution = np.zeros((npts),dtype=complex)
+    for pt in range(npts):
         for ev_cont, elem in enumerate(elems):        
-            pt_col = ev_coords[k]
-            G, H = influence_coeff(elem, coords, pt_col)
-            solution[k] += u_boundary[ev_cont]*H - q_boundary[ev_cont]*G
+            pt_col = ev_coords[pt]
+
+            wrapped_GijRe = lambda chi: Gij_coefficient_function(chi, elem, coords, pt_col, k,"re")
+            wrapped_GijIm = lambda chi: Gij_coefficient_function(chi, elem, coords, pt_col, k,"im")
+            gquadRe,_ = quad(wrapped_GijRe,-1,1)
+            gquadIm,_ = quad(wrapped_GijIm,-1,1)
+            G = gquadRe+1j*gquadIm
+
+            wrapped_HijRe = lambda chi: Hij_coefficient_function(chi, elem, coords, pt_col, k,"re")
+            wrapped_HijIm = lambda chi: Hij_coefficient_function(chi, elem, coords, pt_col, k,"im")
+            hquadRe,_ = quad(wrapped_HijRe,-1,1)
+            hquadIm,_ = quad(wrapped_HijIm,-1,1)
+            H = hquadRe+1j*hquadIm      
+    
+            if domain_type == "external":
+                solution[pt] +=  -1 * (u_boundary[ev_cont]*H - q_boundary[ev_cont]*G)
+            elif domain_type == "internal":
+                solution[pt] +=  u_boundary[ev_cont]*H - q_boundary[ev_cont]*G
+            else:
+                raise Exception("Wrong input specification.")
+     
     return solution
 
 
@@ -480,3 +468,99 @@ def rearrange_sol(sol, rhs, id_dir, id_neu):
     q_bound[id_dir] = sol[id_dir]
     q_bound[id_neu] = rhs[id_neu]
     return u_bound, q_bound
+
+
+
+#########################################################################################################
+
+# Generate square .geo file
+
+def create_square_geo(lower_grid_size, upper_grid_size, sizeInner, ngrid_pts):
+    geom_file = open("simple_square_bound.geo", "w", encoding="utf-8")
+    
+    geom_file.write(" /* \n " +
+                    ".geo file for simple square boundary, \n"+
+                    "Introduccion al Metodo de Frontera Universidad EAFIT 2025-1 \n"+
+                    "by: Daniel Ospina Pajoy, Sebastián Duque Lotero & Mateo Tabares. \n */ "+
+                    "\n \n \n"+
+                    "// Inner Scatterer Element Size"+
+                    f"\n sizeRoI = {sizeInner}; \n \n")
+    
+    geom_file.write("// Points \n") 
+    geom_file.write(f"Point(1) = {{ {lower_grid_size}, {lower_grid_size}, 0.0, {sizeInner} }}; \n")
+    geom_file.write(f"Point(2) = {{ {upper_grid_size}, {lower_grid_size}, 0.0, {sizeInner} }}; \n")
+    geom_file.write(f"Point(3) = {{ {upper_grid_size}, {upper_grid_size}, 0.0, {sizeInner} }}; \n")
+    geom_file.write(f"Point(4) = {{ {lower_grid_size}, {upper_grid_size}, 0.0, {sizeInner} }}; \n")
+    geom_file.write("\n \n") 
+    
+    geom_file.write("// Lines \n") 
+    geom_file.write("Line(1) = { 1, 2 } ; \n")
+    geom_file.write("Line(2) = { 2, 3 } ; \n")
+    geom_file.write("Line(3) = { 3, 4 } ; \n")
+    geom_file.write("Line(4) = { 4, 1 } ; \n")
+    geom_file.write("\n \n") 
+    
+    geom_file.write("// Surfaces \n"+
+                    "Curve Loop(1) = { 1: 4 }; \n"+
+                   "Plane Surface(1) = {1}; \n") 
+    geom_file.write("\n \n") 
+    
+    geom_file.write("// Physical groups \n"+
+                    "Physical Curve(1) = { 1,2,3,4 }; \n"+
+                   "Physical Surface(2) = {1}; \n") 
+    geom_file.write("\n \n") 
+    
+    
+    ndiv = ngrid_pts
+    geom_file.write("// Mesh parameters \n"+
+                   f"ndiv = {ndiv}; \n"+
+                   "Transfinite Curve { 1,2,3, 4 } = ndiv Using Progression 1; \n"+
+                   "Transfinite Surface {1}; \n") 
+        
+    geom_file.close()
+
+
+def create_circle_geo(radius, ngrid_pts):
+
+    geom_file = open("simple_circle_bound.geo", "w", encoding="utf-8")
+    
+    geom_file.write(" /* \n " +
+                    ".geo file for simple circle boundary, \n"+
+                    "Introduccion al Metodo de Frontera Universidad EAFIT 2025-1 \n"+
+                    "by: Daniel Ospina Pajoy, Sebastián Duque Lotero & Mateo Tabares. \n */ "+
+                    "\n \n \n")
+    
+    geom_file.write("// Points \n") 
+    geom_file.write(f"Point(1) = {{ 0.0 , 0.0 , 0.0, 0.5 }}; \n")
+    geom_file.write(f"Point(2) = {{ {-radius}*Cos(Pi/4), {-radius}*Cos(Pi/4), 0.0, 0.5 }}; \n")
+    geom_file.write(f"Point(3) = {{ {radius}*Cos(Pi/4), {-radius}*Cos(Pi/4), 0.0, 0.5 }}; \n")
+    geom_file.write(f"Point(4) = {{ {radius}*Cos(Pi/4), {radius}*Cos(Pi/4), 0.0, 0.5 }}; \n")
+    geom_file.write(f"Point(5) = {{ {-radius}*Cos(Pi/4), {radius}*Cos(Pi/4), 0.0, 0.5 }}; \n")
+    geom_file.write("\n \n") 
+    
+    geom_file.write("// Lines \n") 
+    geom_file.write("Circle(1) = { 2, 1, 3 } ; \n")
+    geom_file.write("Circle(2) = { 3, 1, 4 } ; \n")
+    geom_file.write("Circle(3) = { 4, 1, 5 } ; \n")
+    geom_file.write("Circle(4) = { 5, 1, 2 } ; \n")
+    geom_file.write("\n \n") 
+    
+    geom_file.write("// Surfaces \n"+
+                    "Curve Loop(1) = { 1,2,3,4 }; \n"+
+                   "Plane Surface(1) = {1}; \n") 
+    geom_file.write("\n \n") 
+    
+    geom_file.write("// Physical groups \n"+
+                    "Physical Curve(1) = { 1,2,3,4 }; \n"+
+                   "Physical Surface(2) = {1}; \n") 
+    geom_file.write("\n \n") 
+    
+    
+    ndiv = ngrid_pts
+    geom_file.write("// Mesh parameters \n"+
+                   f"ndiv = {ndiv}; \n"+
+                   "Transfinite Curve { 1,2,3, 4 } = ndiv Using Progression 1; \n"+
+                   "Transfinite Surface {1}; \n") 
+        
+    geom_file.close()
+
