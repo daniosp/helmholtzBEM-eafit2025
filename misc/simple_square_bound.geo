@@ -6,13 +6,13 @@ by: Daniel Ospina Pajoy, Sebastián Duque Lotero & Mateo Tabares.
  
  
 // Inner Scatterer Element Size
- sizeRoI = 0.07; 
+ sizeRoI = 0.1; 
  
 // Points 
-Point(1) = { -5, -5, 0.0, 0.07 }; 
-Point(2) = { 5, -5, 0.0, 0.07 }; 
-Point(3) = { 5, 5, 0.0, 0.07 }; 
-Point(4) = { -5, 5, 0.0, 0.07 }; 
+Point(1) = { 0, 0, 0.0, 0.1 }; 
+Point(2) = { 1, 0, 0.0, 0.1 }; 
+Point(3) = { 1, 1, 0.0, 0.1 }; 
+Point(4) = { 0, 1, 0.0, 0.1 }; 
 
  
 // Lines 
