@@ -585,3 +585,62 @@ def create_circle_geo(radius, ngrid_pts):
         
     geom_file.close()
 
+
+def create_kite_scatterer_geo(alpha, beta, scale_factor, n_points, file_name):
+    #alpha = 0.65
+    #beta = 1.5
+    
+    t = np.linspace(0,2*np.pi,n_points)
+    
+    x_scatterer = (np.cos(t) + alpha * np.cos(2*t) ) 
+    x_scatterer = ( x_scatterer - np.mean(x_scatterer) )  * scale_factor
+    y_scatterer = beta * np.sin(t) * scale_factor
+
+    sizeInner = 0.3
+    geom_file = open(file_name, "w", encoding="utf-8")
+    
+    
+    geom_file.write(" /* \n " +
+                    ".geo file for kite scatterer, \n"+
+                    "Introduccion al Metodo de Frontera Universidad EAFIT 2025-1 \n"+
+                    "by: Daniel Ospina Pajoy, Sebastián Duque Lotero & Mateo Tabares. \n */ "+
+                    "\n \n \n"+
+                    "// Inner Scatterer Element Size"+
+                    f"\n sizeRoI = {sizeInner}; \n \n")
+    
+    geom_file.write("// Scatterer Points \n") 
+    
+    pt_scatterer = 1
+    for (xp,yp) in zip(x_scatterer,y_scatterer):
+        if pt_scatterer != len(x_scatterer):
+            geom_file.write(f"Point({pt_scatterer}) = {{ {xp}, {yp}, 0.0, {sizeInner} }}; \n")
+        pt_scatterer += 1
+    geom_file.write("\n \n") 
+    
+    geom_file.write("// Lines \n") 
+    
+    for idx in range(1,len(x_scatterer)):
+        if idx != len(x_scatterer)-1:
+            geom_file.write(f"Line({idx}) = {{ {idx}, {idx+1} }}; \n")
+        else:
+            geom_file.write(f"Line({idx}) = {{ {idx}, 1 }}; \n")
+    geom_file.write("\n \n") 
+    
+    geom_file.write("// Surfaces \n"+
+                    f"Curve Loop(1) = {{ 1: {len(x_scatterer)-1} }}; \n"+
+                   "Plane Surface(1) = {1}; \n") 
+    geom_file.write("\n \n") 
+    
+    geom_file.write("// Physical groups \n"+
+                    f"Physical Curve(1) = {{ 1: {len(x_scatterer)-1} }}; \n"+
+                   "Physical Surface(2) = {1}; \n") 
+    geom_file.write("\n \n") 
+    
+    
+    ndiv = 1
+    geom_file.write("// Mesh parameters \n"+
+                   f"ndiv = {ndiv}; \n"+
+                   f"Transfinite Curve {{ 1: {len(x_scatterer)-1} }} = ndiv Using Progression 1; \n"
+                   "Transfinite Surface {1}; \n") 
+        
+    geom_file.close()
