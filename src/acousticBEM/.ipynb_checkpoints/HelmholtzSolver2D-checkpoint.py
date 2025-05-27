@@ -23,9 +23,7 @@ import numpy as np
 
 
 class HelmholtzSolver2D(HelmholtzSolver):
-    
     def __init__(self, *args, **kwargs):
-        
         super(HelmholtzSolver2D, self).__init__(*args, **kwargs)
         self.aCenters = 0.5 * (self.aVertex[self.aElement[:, 0]] + self.aVertex[self.aElement[:, 1]])
         # lenght of the boundary elements (for the 3d shapes this is replaced by aArea
