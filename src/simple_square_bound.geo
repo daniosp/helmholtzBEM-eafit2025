@@ -9,10 +9,10 @@ by: Daniel Ospina Pajoy, Sebastián Duque Lotero & Mateo Tabares.
  sizeRoI = 0.1; 
  
 // Points 
-Point(1) = { 0, 0, 0.0, 0.1 }; 
-Point(2) = { 5, 0, 0.0, 0.1 }; 
-Point(3) = { 5, 5, 0.0, 0.1 }; 
-Point(4) = { 0, 5, 0.0, 0.1 }; 
+Point(1) = { -15, -15, 0.0, 0.1 }; 
+Point(2) = { 15, -15, 0.0, 0.1 }; 
+Point(3) = { 15, 15, 0.0, 0.1 }; 
+Point(4) = { -15, 15, 0.0, 0.1 }; 
 
  
 // Lines 
@@ -33,6 +33,6 @@ Physical Surface(2) = {1};
 
  
 // Mesh parameters 
-ndiv = 20; 
+ndiv = 60; 
 Transfinite Curve { 1,2,3, 4 } = ndiv Using Progression 1; 
 Transfinite Surface {1}; 
